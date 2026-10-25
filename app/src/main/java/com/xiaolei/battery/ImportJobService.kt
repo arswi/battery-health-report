@@ -20,6 +20,8 @@ class ImportJobService : JobService() {
                 "自动任务异常：${t.javaClass.simpleName}"
             }
             AutoTask.notify(this, "电池健康报告 · 自动任务", msg)
+            // 一次性闹钟：跑完立刻排明天同一时间的下一次（开机另有 BOOT 重排兜底）
+            if (AutoTask.isEnabled(this)) AutoTask.schedule(this)
             runCatching { jobFinished(params, false) }
         }.apply { isDaemon = true }
         worker?.start()

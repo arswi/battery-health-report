@@ -788,7 +788,9 @@ class MainActivity : Activity() {
         c.addView(label(
             "Android 不允许第三方应用自己生成 bugreport（需要系统签名的 DUMP 权限），" +
                 "所以自动任务做的是：每天定时扫你授权的目录，发现新报告就自动解析入库；" +
-                "没发现新报告就发一条提醒，你在拨号盘输 *#*#284#*#* 生成一次即可。",
+                "没发现新报告就发一条提醒，你在拨号盘输 *#*#284#*#* 生成一次即可。" +
+                "定时用系统闹钟，开机自动重排；MIUI/HyperOS 若长期不到点，" +
+                "请在系统设置里允许本应用「自启动」。",
             10.5f, pal.text3
         ).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -816,6 +818,18 @@ class MainActivity : Activity() {
         r2.addView(button(if (folder == null) "选择报告目录" else "改选报告目录", false) { pickFolder() })
         r2.addView(button("时间 ${AutoTask.hour(this)}:%02d".format(AutoTask.minute(this)), false) { editAutoTime() })
         c.addView(r2)
+
+        // 授权被系统收回时（重启/清理/权限重置）提前亮黄条，别等扫目录报错
+        if (folder != null && !AutoTask.hasFolderAccess(this)) {
+            c.addView(label(
+                "⚠ 目录授权已失效：点「改选报告目录」重新选一次即可恢复",
+                10.5f, "#FF9F1C"
+            ).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(dp(4f), dp(6f), 0, 0) }
+            })
+        }
 
         c.addView(label(
             "目录：${folder?.let { runCatching { it.path?.substringAfterLast(':') }.getOrNull() ?: "已选择" } ?: "未选择"}" +
@@ -1431,8 +1445,21 @@ class MainActivity : Activity() {
                     tvStatus.text = "没有拿到目录"
                     return
                 }
-                AutoTask.setFolder(this, uri)
-                Toast.makeText(this, "已记住报告目录，自动任务会每天扫它", Toast.LENGTH_SHORT).show()
+                if (AutoTask.setFolder(this, uri)) {
+                    Toast.makeText(this, "已记住报告目录，自动任务会每天扫它", Toast.LENGTH_SHORT).show()
+                } else {
+                    // 该来源不支持持久授权（第三方文件管理器/云端目录常见），存了也是死 URI
+                    AlertDialog.Builder(this)
+                        .setTitle("此目录无法长期访问")
+                        .setMessage(
+                            "刚才选的来源不支持持久授权，重启后系统就会收回访问权。\n\n" +
+                                "请重新选择，并在系统弹出的选择器里通过「文件」入口选手机存储里的目录" +
+                                "（如 Download 或 MIUI/debug_log）。"
+                        )
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("重新选") { _, _ -> pickFolder() }
+                        .show()
+                }
                 rebuildContent()
             }
         }

@@ -65,19 +65,37 @@ object AutoTask {
         if (isEnabled(ctx)) schedule(ctx)
     }
 
-    /** 用户授权的目录；同时申请持久化读权限 */
-    fun setFolder(ctx: Context, uri: Uri?) {
+    /**
+     * 用户授权的目录：申请**持久化读权限并验证真的登记上了**。
+     * 部分第三方文件管理器的选择器不支持持久授权（takePersistableUriPermission
+     * 静默失败）——这种目录存下来就是个死 URI，之后每次扫目录都会被系统
+     * SecurityException 拒掉。拿不到持久授权就不存，返回 false 让用户重选。
+     */
+    fun setFolder(ctx: Context, uri: Uri?): Boolean {
         if (uri == null) {
             prefs(ctx).edit().remove(P_FOLDER).apply()
-            return
+            return true
         }
         runCatching {
             ctx.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
-        prefs(ctx).edit().putString(P_FOLDER, uri.toString()).apply()
+        val ok = hasFolderAccess(ctx, uri)
+        if (ok) {
+            prefs(ctx).edit().putString(P_FOLDER, uri.toString()).apply()
+        } else {
+            prefs(ctx).edit().remove(P_FOLDER).apply()
+        }
+        return ok
+    }
+
+    /** 目录的持久读授权是否还有效（被系统重启清理/权限重置收回后就查不到了） */
+    fun hasFolderAccess(ctx: Context, uri: Uri? = folderUri(ctx)): Boolean {
+        if (uri == null) return false
+        return ctx.contentResolver.persistedUriPermissions.any {
+            it.isReadPermission && it.uri.toString() == uri.toString()
+        }
     }
 
     // ------------------------------------------------------------ 定时
@@ -90,7 +108,13 @@ object AutoTask {
         return PendingIntent.getBroadcast(ctx, REQ_ALARM, i, flags)
     }
 
-    /** 每天都跑一次（Doze 下会延后，但不会漏） */
+    /**
+     * 排下一次检查：一次性闹钟，跑完由 ImportJobService 再排明天的。
+     * 以前用 setInexactRepeating（不精确循环闹钟），在 Doze / 国产省电策略下
+     * 会拖几小时甚至一直不触发——这正是"设定时间到点不执行"的主因。
+     * setAndAllowWhileIdle + RTC_WAKEUP 在 Doze 下也能按时叫醒（系统对它的
+     * 限流是每应用约 9 分钟一次，对每日任务绰绰有余）。
+     */
     fun schedule(ctx: Context) {
         runCatching {
             val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -102,7 +126,7 @@ object AutoTask {
                 if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
             }
             am.cancel(pending(ctx))
-            am.setInexactRepeating(AlarmManager.RTC, cal.timeInMillis, AlarmManager.INTERVAL_DAY, pending(ctx))
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pending(ctx))
         }.onFailure { CrashLog.write(ctx, it) }
     }
 
@@ -126,7 +150,15 @@ object AutoTask {
         if (uri == null) {
             return "还没选择报告目录，跳过本次检查"
         }
+        // 先验授权再查：授权被收回时 query 抛 SecurityException——那不是程序
+        // 错误而是需要用户重新选目录，给一句人话，不再写崩溃横幅吓人
+        if (!hasFolderAccess(ctx, uri)) {
+            return "目录访问授权已失效（系统重启/清理或权限重置后会被收回）。请到「每日自动任务」重新选择报告目录"
+        }
         val files = runCatching { listReports(ctx, uri) }.getOrElse {
+            if (it is SecurityException) {
+                return "目录访问授权已失效，请重新选择报告目录"
+            }
             CrashLog.write(ctx, it)
             emptyList()
         }
