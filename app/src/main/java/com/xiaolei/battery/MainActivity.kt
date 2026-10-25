@@ -118,6 +118,22 @@ class MainActivity : Activity() {
         runCatching { handleIncoming(intent) }
     }
 
+    private var resumedOnce = false
+
+    /**
+     * 回到前台时重读数据库刷新：后台自动任务（Job）导入新报告、从通知点进来
+     * 等场景，界面上的机型 chips 计数不会自己变（此前要重启 App 才更新，
+     * 出现"详细页 7 份、顶部还是 6"的错位）。
+     */
+    override fun onResume() {
+        super.onResume()
+        if (!resumedOnce) {
+            resumedOnce = true   // 首次紧跟 onCreate 的那次构建，不重复刷
+            return
+        }
+        if (this::chipsRow.isInitialized) refreshData()
+    }
+
     /** 跟随系统主题：系统切日夜时同步换肤（Activity 未被重建的场景下兜底） */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -812,7 +828,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, dp(2f), 0, 0) }
+            ).apply { setMargins(0, dp(8f), 0, 0) }
         }
         val folder = AutoTask.folderUri(this)
         r2.addView(button(if (folder == null) "选择报告目录" else "改选报告目录", false) { pickFolder() })
@@ -827,7 +843,7 @@ class MainActivity : Activity() {
             ).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(dp(4f), dp(6f), 0, 0) }
+                ).apply { setMargins(dp(4f), dp(8f), 0, 0) }
             })
         }
 
@@ -838,7 +854,7 @@ class MainActivity : Activity() {
         ).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(dp(4f), dp(6f), 0, 0) }
+            ).apply { setMargins(dp(4f), dp(8f), 0, 0) }
         })
         col.addView(c)
     }
