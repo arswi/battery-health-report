@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色科技风：健康=绿 一般=黄 衰减=橙 危险=红 -->
+    <color name="bg">#FF0B1016</color>
+    <color name="card">#FF151D26</color>
+    <color name="card2">#FF1C2733</color>
+    <color name="text">#FFE8EEF4</color>
+    <color name="text2">#FF8FA0B2</color>
+    <color name="text3">#FF5C6B7A</color>
+    <color name="accent">#FF3D8BFF</color>
+    <color name="good">#FF2EC56D</color>
+    <color name="ok">#FF7ED321</color>
+    <color name="warn">#FFFFB020</color>
+    <color name="bad">#FFF5603C</color>
+    <color name="danger">#FFFF4D4F</color>
+    <color name="grid">#FF26323D</color>
+</resources>
